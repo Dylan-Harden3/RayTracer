@@ -1,0 +1,43 @@
+﻿  main.cpp
+C:\Users\dylan\Documents\CSCE441\A6\src\main.cpp(85,6): warning C4305: 'argument': truncation from 'double' to 'float'
+C:\Users\dylan\Documents\CSCE441\A6\src\main.cpp(107,79): warning C4305: 'argument': truncation from 'double' to 'float'
+C:\Users\dylan\Documents\CSCE441\A6\src\main.cpp(143,49): warning C4244: 'argument': conversion from 'T' to 'unsigned char', possible loss of data
+          with
+          [
+              T=float
+          ]
+C:\Users\dylan\Documents\CSCE441\A6\src\main.cpp(143,40): warning C4244: 'argument': conversion from 'T' to 'unsigned char', possible loss of data
+          with
+          [
+              T=float
+          ]
+C:\Users\dylan\Documents\CSCE441\A6\src\main.cpp(143,31): warning C4244: 'argument': conversion from 'T' to 'unsigned char', possible loss of data
+          with
+          [
+              T=float
+          ]
+C:\Users\dylan\Documents\CSCE441\A6\src\main.cpp(242,24): warning C4305: '=': truncation from 'double' to 'float'
+C:\Users\dylan\Documents\CSCE441\A6\src\main.cpp(251,25): warning C4305: '=': truncation from 'double' to 'float'
+C:\Users\dylan\Documents\CSCE441\A6\src\main.cpp(272,27): warning C4305: 'argument': truncation from 'double' to 'T'
+          with
+          [
+              T=float
+          ]
+C:\Users\dylan\Documents\CSCE441\A6\src\main.cpp(335,37): warning C4305: '=': truncation from 'double' to 'float'
+C:\Users\dylan\Documents\CSCE441\A6\src\main.cpp(475,34): warning C4834: discarding return value of function with 'nodiscard' attribute
+C:\Users\dylan\Documents\CSCE441\A6\src\main.cpp(481,14): warning C4244: 'initializing': conversion from '_Ty' to 'float', possible loss of data
+          with
+          [
+              _Ty=double
+          ]
+C:\Users\dylan\Documents\CSCE441\A6\src\main.cpp(482,14): warning C4244: 'initializing': conversion from '_Ty' to 'float', possible loss of data
+          with
+          [
+              _Ty=double
+          ]
+C:\Users\dylan\Documents\CSCE441\A6\src\main.cpp(483,14): warning C4244: 'initializing': conversion from '_Ty' to 'float', possible loss of data
+          with
+          [
+              _Ty=double
+          ]
+  A6.vcxproj -> C:\Users\dylan\Documents\CSCE441\A6\build\Release\A6.exe

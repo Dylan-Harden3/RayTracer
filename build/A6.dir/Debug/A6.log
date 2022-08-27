@@ -1,0 +1,8 @@
+﻿  Bunny.cpp
+C:\Users\dylan\Documents\CSCE441\A6\src\Bunny.cpp(71,11): warning C4244: 'initializing': conversion from 'const _Ty' to 'float', possible loss of data
+          with
+          [
+              _Ty=double
+          ]
+C:\Users\dylan\Documents\CSCE441\A6\src\Bunny.cpp(108,24): warning C4244: 'argument': conversion from 'double' to 'float', possible loss of data
+  A6.vcxproj -> C:\Users\dylan\Documents\CSCE441\A6\build\Debug\A6.exe

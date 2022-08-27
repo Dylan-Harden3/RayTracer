@@ -1,0 +1,3 @@
+C:/Users/dylan/Documents/CSCE441/A6/build/CMakeFiles/A6.dir
+C:/Users/dylan/Documents/CSCE441/A6/build/CMakeFiles/ALL_BUILD.dir
+C:/Users/dylan/Documents/CSCE441/A6/build/CMakeFiles/ZERO_CHECK.dir

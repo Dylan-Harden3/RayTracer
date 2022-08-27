@@ -1,0 +1,10 @@
+^C:\USERS\DYLAN\DOCUMENTS\CSCE441\A6\BUILD\CMAKEFILES\C17713C6E836FBE2704658B1634B8DFC\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/dylan/Documents/CSCE441/A6 -BC:/Users/dylan/Documents/CSCE441/A6/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/dylan/Documents/CSCE441/A6/build/A6.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
