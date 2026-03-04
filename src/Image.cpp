@@ -5,8 +5,6 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-using namespace std;
-
 Image::Image(int w, int h) :
 	width(w),
 	height(h),
@@ -26,11 +24,11 @@ void Image::setPixel(int x, int y, unsigned char r, unsigned char g, unsigned ch
 
 	// First check for bounds
 	if(y < 0 || y >= height) {
-		cout << "Row " << y << " is out of bounds" << endl;
+		std::cout << "Row " << y << " is out of bounds" << std::endl;
 		return;
 	}
 	if(x < 0 || x >= width) {
-		cout << "Col " << x << " is out of bounds" << endl;
+		std::cout << "Col " << x << " is out of bounds" << std::endl;
 		return;
 	}
 
@@ -47,15 +45,15 @@ void Image::setPixel(int x, int y, unsigned char r, unsigned char g, unsigned ch
 	pixels[3*index + 2] = b;
 }
 
-void Image::writeToFile(const string &filename)
+void Image::writeToFile(const std::string &filename)
 {
 	// The distance in bytes from the first byte of a row of pixels to the
 	// first byte of the next row of pixels
 	int stride_in_bytes = width*comp*sizeof(unsigned char);
 	int rc = stbi_write_png(filename.c_str(), width, height, comp, &pixels[0], stride_in_bytes);
 	if(rc) {
-		cout << "Wrote to " << filename << endl;
+		std::cout << "Wrote to " << filename << std::endl;
 	} else {
-		cout << "Couldn't write to " << filename << endl;
+		std::cout << "Couldn't write to " << filename << std::endl;
 	}
 }

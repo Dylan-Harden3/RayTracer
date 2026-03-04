@@ -1,25 +1,18 @@
 #pragma once
-#ifndef CAMERA_H
-#define CAMERA_H
-
-#include <glm/glm.hpp>
-#include <vector>
+#ifndef _CAMERA_H_
+#define _CAMERA_H_
 
 class Camera {
-	public:
-		glm::vec3 position;
-		float fov, aspectRatio;
-		int width, height;
-
-		float bounds;
-
-		std::vector<glm::vec3> pixelPositions;
-
-		Camera(glm::vec3 pos, int w, int h);
-		Camera() {};
-		void setImagePixels();
-
-		bool sceneEight = false;
+    public:
+        Camera(int x, int y, int z, float fov);
+        void getRays(int w, int h, int x, int y, int z);
+    private:
+        int x_;
+        int y_;
+        int z_;
+        float fov_;
+        float bounds_;
+        const float PI = 3.14159265358979323846; 
 };
 
 #endif
