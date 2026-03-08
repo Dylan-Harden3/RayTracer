@@ -16,9 +16,7 @@ public:
 	int getHeight() const { return height; }
 
 private:
-	int width;
-	int height;
-	int comp;
+	int width, height, comp;
 	std::vector<unsigned char> pixels;
 };
 
