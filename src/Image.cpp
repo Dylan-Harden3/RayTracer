@@ -1,15 +1,29 @@
-#include <iostream>
+#include <algorithm>
 #include <cassert>
+#include <cmath>
+#include <iostream>
+
 #include "Image.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
+namespace {
+unsigned char clampToU8(float value)
+{
+	if (!std::isfinite(value)) {
+		return 0;
+	}
+	value = std::clamp(value, 0.0f, 255.0f);
+	return static_cast<unsigned char>(std::lround(value));
+}
+}
+
 Image::Image(int w, int h) :
 	width(w),
 	height(h),
 	comp(3),
-	pixels(width*height*comp, 0)
+	pixels(width * height * comp, 0)
 {
 }
 
@@ -23,11 +37,11 @@ void Image::setPixel(int x, int y, unsigned char r, unsigned char g, unsigned ch
 	// columns, and each column consists of 3 unsigned chars.
 
 	// First check for bounds
-	if(y < 0 || y >= height) {
+	if (y < 0 || y >= height) {
 		std::cout << "Row " << y << " is out of bounds" << std::endl;
 		return;
 	}
-	if(x < 0 || x >= width) {
+	if (x < 0 || x >= width) {
 		std::cout << "Col " << x << " is out of bounds" << std::endl;
 		return;
 	}
@@ -36,24 +50,30 @@ void Image::setPixel(int x, int y, unsigned char r, unsigned char g, unsigned ch
 	// to flip the row to make the origin be the lower left corner.
 	y = height - y - 1;
 	// index corresponding to row and col, (assuming single component image)
-	int index = y*width + x;
+	int index = y * width + x;
 	// Multiply by 3 to get the index for the rgb components.
 	assert(index >= 0);
-	assert(3*index + 2 < (int)pixels.size());
-	pixels[3*index + 0] = r;
-	pixels[3*index + 1] = g;
-	pixels[3*index + 2] = b;
+	assert(3 * index + 2 < (int)pixels.size());
+	pixels[3 * index + 0] = r;
+	pixels[3 * index + 1] = g;
+	pixels[3 * index + 2] = b;
+}
+
+void Image::setPixel(int x, int y, float r, float g, float b)
+{
+	setPixel(x, y, clampToU8(r), clampToU8(g), clampToU8(b));
 }
 
 void Image::writeToFile(const std::string &filename)
 {
 	// The distance in bytes from the first byte of a row of pixels to the
 	// first byte of the next row of pixels
-	int stride_in_bytes = width*comp*sizeof(unsigned char);
+	int stride_in_bytes = width * comp * sizeof(unsigned char);
 	int rc = stbi_write_png(filename.c_str(), width, height, comp, &pixels[0], stride_in_bytes);
-	if(rc) {
+	if (rc) {
 		std::cout << "Wrote to " << filename << std::endl;
-	} else {
+	}
+	else {
 		std::cout << "Couldn't write to " << filename << std::endl;
 	}
 }

@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <memory>
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
@@ -9,6 +10,8 @@
 #include "Vec3.h"
 #include "Ray.h"
 #include "Shape.h"
+#include "Hit.h"
+#include "Light.h"
 
 double RANDOM_COLORS[7][3] = {
 	{0.0000,    0.4470,    0.7410},
@@ -22,19 +25,57 @@ double RANDOM_COLORS[7][3] = {
 
 int main(int argc, char **argv)
 {
-	int width=512, height=512;
+	int width=1024, height=1024;
 	Camera c(Vec3(0, 0, 5), 45.0);
-	Sphere s(Vec3(-0.5, -1.0, 1.0), 1.0);
 	std::vector<Ray> rays = c.getRays(width, height, 4);
 	Image image(width, height);
 
+	std::vector<Light> lights;
+	lights.push_back(Light(Vec3(-2.0, 1.0, 1.0), 1.0));
+
+	std::vector<std::unique_ptr<Shape>> scene;
+	scene.push_back(std::make_unique<Sphere>(
+		Vec3(-0.5f, -1.0f, 1.0f),
+		1.0f,
+		Vec3(1.0f, 0.0f, 0.0f),
+		Vec3(1.0f, 1.0f, 0.5f),
+		Vec3(0.1f, 0.1f, 0.1f),
+		100.0f
+	));
+	scene.push_back(std::make_unique<Sphere>(
+		Vec3(0.5f, -1.0f, -1.0f),
+		1.0f,
+		Vec3(0.0f, 1.0f, 0.0f),
+		Vec3(1.0f, 1.0f, 0.5f),
+		Vec3(0.1f, 0.1f, 0.1f),
+		100.0f
+	));
+	scene.push_back(std::make_unique<Sphere>(
+		Vec3(0.0f, 1.0f, 0.0f),
+		1.0f,
+		Vec3(0.0f, 0.0f, 1.0f),
+		Vec3(1.0f, 1.0f, 0.5f),
+		Vec3(0.1f, 0.1f, 0.1f),
+		100.0f
+	));
+
 	std::size_t r = 0;
-	for(std::size_t i = 0; i < width; i++) {
-		for(std::size_t j = 0; j < height; j++) {
-			if (s.intersects(rays[r])) {
-				image.setPixel(i, j, 255, 0, 0);
+	for(std::size_t i = 0; i < static_cast<std::size_t>(width); i++) {
+		for(std::size_t j = 0; j < static_cast<std::size_t>(height); j++) {
+			Ray ray = rays[r];
+			std::optional<Hit> closest_hit;
+			for (auto& shape : scene) {
+    			auto hit = shape->intersects(ray);
+				if (hit && (!closest_hit || hit->distance < closest_hit->distance)) {
+					closest_hit = *hit;
+				}
 			}
-			r++;
+			// get color given hit
+			if (closest_hit) {
+				Vec3 color = closest_hit->getColor(ray, lights);
+				image.setPixel(i, j, color.x, color.y, color.z);
+			}
+			r += 1;
 		}
 	}
 
