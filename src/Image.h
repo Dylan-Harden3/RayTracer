@@ -3,7 +3,8 @@
 #include <string>
 #include <vector>
 
-class Image {
+class Image
+{
 public:
 	Image(int width, int height);
 	virtual ~Image();

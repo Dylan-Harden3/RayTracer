@@ -8,22 +8,23 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-namespace {
-unsigned char clampToU8(float value)
+namespace
 {
-	if (!std::isfinite(value)) {
-		return 0;
+	unsigned char clampToU8(float value)
+	{
+		if (!std::isfinite(value))
+		{
+			return 0;
+		}
+		value = std::clamp(value, 0.0f, 255.0f);
+		return static_cast<unsigned char>(std::lround(value));
 	}
-	value = std::clamp(value, 0.0f, 255.0f);
-	return static_cast<unsigned char>(std::lround(value));
-}
 }
 
-Image::Image(int w, int h) :
-	width(w),
-	height(h),
-	comp(3),
-	pixels(width * height * comp, 0)
+Image::Image(int w, int h) : width(w),
+							 height(h),
+							 comp(3),
+							 pixels(width * height * comp, 0)
 {
 }
 
@@ -37,11 +38,13 @@ void Image::setPixel(int x, int y, unsigned char r, unsigned char g, unsigned ch
 	// columns, and each column consists of 3 unsigned chars.
 
 	// First check for bounds
-	if (y < 0 || y >= height) {
+	if (y < 0 || y >= height)
+	{
 		std::cout << "Row " << y << " is out of bounds" << std::endl;
 		return;
 	}
-	if (x < 0 || x >= width) {
+	if (x < 0 || x >= width)
+	{
 		std::cout << "Col " << x << " is out of bounds" << std::endl;
 		return;
 	}
@@ -70,10 +73,12 @@ void Image::writeToFile(const std::string &filename)
 	// first byte of the next row of pixels
 	int stride_in_bytes = width * comp * sizeof(unsigned char);
 	int rc = stbi_write_png(filename.c_str(), width, height, comp, &pixels[0], stride_in_bytes);
-	if (rc) {
+	if (rc)
+	{
 		std::cout << "Wrote to " << filename << std::endl;
 	}
-	else {
+	else
+	{
 		std::cout << "Couldn't write to " << filename << std::endl;
 	}
 }

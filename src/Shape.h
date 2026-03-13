@@ -2,44 +2,60 @@
 
 #include <optional>
 #include <vector>
+#include <memory>
+
 #include "Vec3.h"
 #include "Ray.h"
 #include "Hit.h"
 #include "Light.h"
 
-class Shape {
-public:
-    virtual std::optional<Hit> intersects(const Ray& r) const = 0;
-    virtual Vec3 getNormal(const Vec3& position) const = 0;
-    virtual Vec3 getColor(const Ray& ray, const Hit& hit, const std::vector<Light>& lights) const = 0;
-    virtual ~Shape() = default;
+struct Material
+{
+    Vec3 diffuse;
+    Vec3 specular;
+    Vec3 ambient;
+    float exponent;
+    Material(const Vec3 &diffuse, const Vec3 &specular, const Vec3 &ambient, float exponent)
+        : diffuse(diffuse), specular(specular), ambient(ambient), exponent(exponent) {}
 };
 
-class Sphere : public Shape {
+class Shape
+{
 public:
-    Sphere(const Vec3& center,
-           float radius,
-           const Vec3& diffuse,
-           const Vec3& specular,
-           const Vec3& ambient,
-           float exponent)
-        : center(center), radius(radius), diffuse(diffuse), specular(specular), ambient(ambient), exponent(exponent) {}
+    virtual std::optional<Hit> intersects(const Ray &r) const = 0;
+    virtual Vec3 getNormal(const Vec3 &position) const = 0;
+    virtual ~Shape() = default;
 
-    Sphere(const Sphere& other)
-        : center(other.center),
-          radius(other.radius),
-          diffuse(other.diffuse),
-          specular(other.specular),
-          ambient(other.ambient),
-          exponent(other.exponent) {}
+    Vec3 getColor(const Ray &ray, const Hit &hit, const std::vector<Light> &lights, const std::vector<std::unique_ptr<Shape>> &scene) const;
 
-    std::optional<Hit> intersects(const Ray& r) const override;
-    Vec3 getNormal(const Vec3& position) const override;
-    Vec3 getColor(const Ray& ray, const Hit& hit, const std::vector<Light>& lights) const override;
+protected:
+    explicit Shape(Material material) : material(material) {}
+    Material material;
+};
+
+class Sphere : public Shape
+{
+public:
+    Sphere(const Vec3 &center, float radius, Material material)
+        : Shape(material), center(center), radius(radius) {}
+
+    std::optional<Hit> intersects(const Ray &r) const override;
+    Vec3 getNormal(const Vec3 &position) const override;
 
 private:
     Vec3 center;
     float radius;
-    Vec3 diffuse, specular, ambient;
-    float exponent;
+};
+
+class Plane : public Shape
+{
+public:
+    Plane(const Vec3 &position, const Vec3 &normal, Material material)
+        : Shape(material), position(position), normal(normal) {}
+
+    std::optional<Hit> intersects(const Ray &r) const override;
+    Vec3 getNormal(const Vec3 &position) const override;
+
+private:
+    Vec3 position, normal;
 };
