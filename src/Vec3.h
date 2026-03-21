@@ -23,6 +23,13 @@ struct Vec3
     Vec3 operator+(const float c) const { return {c + x, c + y, c + z}; }
 
     float dot(const Vec3 &other) const { return x * other.x + y * other.y + z * other.z; }
+    Vec3 cross(const Vec3 &other) const
+    {
+        return Vec3(
+            y * other.z - z * other.y,
+            z * other.x - x * other.z,
+            x * other.y - y * other.x);
+    }
     void normalize()
     {
         float magnitude = std::pow(x * x + y * y + z * z, 0.5);

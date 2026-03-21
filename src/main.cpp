@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <memory>
+#include <random>
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
@@ -26,46 +27,58 @@ double RANDOM_COLORS[7][3] = {
 int main(int argc, char **argv)
 {
 	int width = 1024, height = 1024;
-	Camera c(Vec3(0, 0, 5), 45.0);
-	std::vector<Ray> rays = c.getRays(width, height, 4);
+	Camera c(Vec3(-12.0f, 10.0f, 12.0f), 45.0f);
+	std::vector<Ray> rays = c.getRays(width, height, Vec3(0.0f, -1.0f, 0.0f));
 	Image image(width, height);
 
+	std::mt19937 rng(std::random_device{}());
+	std::uniform_real_distribution<float> light_pos_xz(-12.0f, 12.0f);
+	std::uniform_real_distribution<float> light_pos_y(10.0f, 14.0f);
+	std::uniform_real_distribution<float> light_intensity(0.1f, 0.8f);
+
 	std::vector<Light> lights;
-	lights.push_back(Light(Vec3(-2.0, 1.0, 1.0), 1.0));
+	for (int i = 0; i < 3; i++)
+	{
+		lights.push_back(Light(
+			Vec3(light_pos_xz(rng), light_pos_y(rng), light_pos_xz(rng)),
+			light_intensity(rng)));
+	}
+
+	std::uniform_real_distribution<float> plane_color_dist(0.1f, 1.0f);
+	Vec3 plane_diffuse(plane_color_dist(rng), plane_color_dist(rng), plane_color_dist(rng));
 
 	std::vector<std::unique_ptr<Shape>> scene;
 	scene.push_back(std::make_unique<Plane>(
-		Vec3(0.0f, -4.0f, 0.0f),
+		Vec3(0.0f, -1.0f, 0.0f),
 		Vec3(0.0f, 1.0f, 0.0f),
 		Material(
-			Vec3(1.0f, 1.0f, 1.0f),
+			plane_diffuse,
 			Vec3(0.0f, 0.0f, 0.0f),
-			Vec3(0.1f, 0.1f, 0.1f),
+			0.1f * plane_diffuse,
 			0.0f)));
-	scene.push_back(std::make_unique<Sphere>(
-		Vec3(-0.5f, -1.0f, 1.0f),
-		1.0f,
-		Material(
-			Vec3(1.0f, 0.0f, 0.0f),
-			Vec3(1.0f, 1.0f, 0.5f),
-			Vec3(0.1f, 0.1f, 0.1f),
-			100.0f)));
-	scene.push_back(std::make_unique<Sphere>(
-		Vec3(0.5f, -1.0f, -1.0f),
-		1.0f,
-		Material(
-			Vec3(0.0f, 1.0f, 0.0f),
-			Vec3(1.0f, 1.0f, 0.5f),
-			Vec3(0.1f, 0.1f, 0.1f),
-			100.0f)));
-	scene.push_back(std::make_unique<Sphere>(
-		Vec3(0.0f, 1.0f, 0.0f),
-		1.0f,
-		Material(
-			Vec3(0.0f, 0.0f, 1.0f),
-			Vec3(1.0f, 1.0f, 0.5f),
-			Vec3(0.1f, 0.1f, 0.1f),
-			100.0f)));
+
+	std::uniform_real_distribution<float> pos_dist(-10.0f, 10.0f);
+	std::uniform_real_distribution<float> y_dist(0.25f, 2.0f);
+	std::uniform_real_distribution<float> radius_dist(0.25f, 0.75f);
+	std::uniform_real_distribution<float> color_dist(0.1f, 1.0f);
+	std::uniform_real_distribution<float> spec_dist(0.1f, 0.5f);
+	std::uniform_real_distribution<float> ambient_scale_dist(0.03f, 0.12f);
+	std::uniform_real_distribution<float> exponent_dist(15.0f, 200.0f);
+
+	for (int i = 0; i < 75; i++)
+	{
+		float radius = radius_dist(rng);
+		Vec3 center(pos_dist(rng), y_dist(rng), pos_dist(rng));
+
+		Vec3 diffuse(color_dist(rng), color_dist(rng), color_dist(rng));
+		float spec = spec_dist(rng);
+		Vec3 specular(spec, spec, spec);
+		float ambient_scale = ambient_scale_dist(rng);
+		Vec3 ambient = ambient_scale * diffuse;
+		float exponent = exponent_dist(rng);
+
+		scene.push_back(std::make_unique<Sphere>(center, radius, Material(diffuse, specular, ambient, exponent)));
+	}
 
 	std::size_t r = 0;
 	for (std::size_t i = 0; i < static_cast<std::size_t>(width); i++)
@@ -82,7 +95,6 @@ int main(int argc, char **argv)
 					closest_hit = *hit;
 				}
 			}
-			// get color given hit
 			if (closest_hit)
 			{
 				Vec3 color = closest_hit->shape->getColor(ray, *closest_hit, lights, scene);
