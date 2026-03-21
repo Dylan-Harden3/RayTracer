@@ -5,6 +5,10 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <functional>
+#include <algorithm>
+#include <chrono>
+#include <limits>
+#include <iomanip>
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
@@ -362,11 +366,21 @@ int main(int argc, char **argv)
 		scene.push_back(std::make_unique<Sphere>(center, radius, Material(diffuse, specular, ambient, exponent)));
 	}
 
+	using Clock = std::chrono::steady_clock;
+	using MicrosecondsD = std::chrono::duration<double, std::micro>;
+
+	double min_pixel_us = std::numeric_limits<double>::infinity();
+	double max_pixel_us = 0.0;
+	double sum_pixel_us = 0.0;
+	std::size_t pixel_count = 0;
+
+	const auto render_start = Clock::now();
 	std::size_t r = 0;
 	for (std::size_t i = 0; i < static_cast<std::size_t>(width); i++)
 	{
 		for (std::size_t j = 0; j < static_cast<std::size_t>(height); j++)
 		{
+			const auto pixel_start = Clock::now();
 			Ray ray = rays[r];
 			std::optional<Hit> closest_hit;
 			for (const auto &shape : scene)
@@ -382,11 +396,32 @@ int main(int argc, char **argv)
 				Vec3 color = closest_hit->shape->getColor(ray, *closest_hit, lights, scene);
 				image.setPixel(i, j, color.x, color.y, color.z);
 			}
+
+			const double pixel_us = MicrosecondsD(Clock::now() - pixel_start).count();
+			min_pixel_us = std::min(min_pixel_us, pixel_us);
+			max_pixel_us = std::max(max_pixel_us, pixel_us);
+			sum_pixel_us += pixel_us;
+			pixel_count += 1;
+
 			r += 1;
 		}
 	}
+	const auto render_end = Clock::now();
+	const double render_ms = std::chrono::duration<double, std::milli>(render_end - render_start).count();
 
 	image.writeToFile(options.outputFile);
+
+	if (pixel_count > 0)
+	{
+		const double avg_pixel_us = sum_pixel_us / static_cast<double>(pixel_count);
+		std::cerr << std::fixed << std::setprecision(3);
+		std::cerr << "Pixel timing (us): min=" << min_pixel_us
+				  << " max=" << max_pixel_us
+				  << " avg=" << avg_pixel_us
+				  << " (n=" << pixel_count << ")\n";
+	}
+	std::cerr << std::fixed << std::setprecision(3);
+	std::cerr << "Total render time (ms): " << render_ms << "\n";
 
 	return 0;
 }
