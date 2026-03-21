@@ -2,6 +2,9 @@
 #include <string>
 #include <memory>
 #include <random>
+#include <stdexcept>
+#include <unordered_map>
+#include <functional>
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
@@ -24,27 +27,306 @@ double RANDOM_COLORS[7][3] = {
 	{0.6350, 0.0780, 0.1840},
 };
 
+struct FloatRange
+{
+	float min = 0.0f;
+	float max = 0.0f;
+};
+
+struct Options
+{
+	Vec3 cameraPosition = Vec3(-12.0f, 10.0f, 12.0f);
+	float cameraFov = 45.0f;
+	std::string outputFile = "test.png";
+
+	FloatRange lightPosX = {-12.0f, 12.0f};
+	FloatRange lightPosY = {10.0f, 14.0f};
+	FloatRange lightPosZ = {-12.0f, 12.0f};
+	FloatRange lightIntensity = {0.1f, 0.8f};
+	int numLights = 3;
+
+	FloatRange planeColor = {0.1f, 1.0f};
+
+	FloatRange spherePosXZ = {-10.0f, 10.0f};
+	FloatRange sphereY = {0.25f, 2.0f};
+	FloatRange sphereRadius = {0.25f, 0.75f};
+	FloatRange sphereColor = {0.1f, 1.0f};
+	FloatRange sphereSpec = {0.1f, 0.5f};
+	FloatRange sphereAmbientScale = {0.03f, 0.12f};
+	FloatRange sphereExponent = {15.0f, 200.0f};
+	int numSpheres = 75;
+};
+
+static float parseFloatOrThrow(const char *value, const char *what)
+{
+	try
+	{
+		return std::stof(std::string(value));
+	}
+	catch (...)
+	{
+		throw std::runtime_error(std::string("Invalid ") + what + ": '" + value + "'");
+	}
+}
+
+static int parseIntOrThrow(const char *value, const char *what)
+{
+	try
+	{
+		return std::stoi(std::string(value));
+	}
+	catch (...)
+	{
+		throw std::runtime_error(std::string("Invalid ") + what + ": '" + value + "'");
+	}
+}
+
+static FloatRange parseRangeOrThrow(int argc, char **argv, int &i, const char *what)
+{
+	if (i + 2 >= argc)
+	{
+		throw std::runtime_error(std::string("Missing values for ") + what + " (expected: <min> <max>)");
+	}
+	FloatRange r;
+	r.min = parseFloatOrThrow(argv[i + 1], "range min");
+	r.max = parseFloatOrThrow(argv[i + 2], "range max");
+	i += 2;
+	return r;
+}
+
+static Vec3 parseVec3OrThrow(int argc, char **argv, int &i, const char *what)
+{
+	if (i + 3 >= argc)
+	{
+		throw std::runtime_error(std::string("Missing values for ") + what + " (expected: <x> <y> <z>)");
+	}
+	float x = parseFloatOrThrow(argv[i + 1], "x");
+	float y = parseFloatOrThrow(argv[i + 2], "y");
+	float z = parseFloatOrThrow(argv[i + 3], "z");
+	i += 3;
+	return Vec3(x, y, z);
+}
+
+static void validateRangeOrThrow(const FloatRange &r, const char *what)
+{
+	if (r.min > r.max)
+	{
+		throw std::runtime_error(std::string("Invalid ") + what + " range: min > max");
+	}
+}
+
+static void printUsage(const char *exe)
+{
+	std::cout
+		<< "Usage: " << exe << " [options]\n"
+		<< "\n"
+		<< "Output:\n"
+		<< "  --out <filename>                 Output image filename (default: test.png)\n"
+		<< "\n"
+		<< "Camera:\n"
+		<< "  --cam-pos <x> <y> <z>            Camera position (default: -12 10 12)\n"
+		<< "  --cam-fov <degrees>              Camera vertical FOV in degrees (default: 45)\n"
+		<< "\n"
+		<< "Lights (randomized):\n"
+		<< "  --num-lights <n>                 Number of point lights (default: 3)\n"
+		<< "  --light-pos-x <min> <max>        Light X position range (default: -12 12)\n"
+		<< "  --light-pos-y <min> <max>        Light Y position range (default: 10 14)\n"
+		<< "  --light-pos-z <min> <max>        Light Z position range (default: -12 12)\n"
+		<< "  --light-intensity <min> <max>    Light intensity range (default: 0.1 0.8)\n"
+		<< "\n"
+		<< "Plane (randomized):\n"
+		<< "  --plane-color <min> <max>        Plane diffuse RGB component range (default: 0.1 1.0)\n"
+		<< "\n"
+		<< "Spheres (randomized):\n"
+		<< "  --num-spheres <n>                Number of spheres (default: 75)\n"
+		<< "  --sphere-pos-xz <min> <max>      Sphere X/Z position range (default: -10 10)\n"
+		<< "  --sphere-y <min> <max>           Sphere Y position range (default: 0.25 2.0)\n"
+		<< "  --sphere-radius <min> <max>      Sphere radius range (default: 0.25 0.75)\n"
+		<< "  --sphere-color <min> <max>       Sphere diffuse RGB component range (default: 0.1 1.0)\n"
+		<< "  --sphere-spec <min> <max>        Sphere specular RGB component range (default: 0.1 0.5)\n"
+		<< "  --sphere-ambient-scale <min> <max> Ambient = scale * diffuse (default: 0.03 0.12)\n"
+		<< "  --sphere-exponent <min> <max>    Phong exponent range (default: 15 200)\n"
+		<< "\n"
+		<< "Other:\n"
+		<< "  -h, --help                       Show this help text\n";
+}
+
+struct ParseOutcome
+{
+	Options options;
+	bool showHelp = false;
+};
+
+static ParseOutcome parseArgsOrThrow(int argc, char **argv)
+{
+	ParseOutcome outcome;
+
+	using Handler = std::function<void(ParseOutcome &, int, char **, int &)>;
+	std::unordered_map<std::string, Handler> handlers;
+
+	handlers.emplace("--out", [](ParseOutcome &o, int argc, char **argv, int &i) {
+		if (i + 1 >= argc)
+		{
+			throw std::runtime_error("Missing value for --out (expected: <filename>)");
+		}
+		o.options.outputFile = std::string(argv[i + 1]);
+		i += 1;
+	});
+
+	handlers.emplace("--cam-pos", [](ParseOutcome &o, int argc, char **argv, int &i) {
+		o.options.cameraPosition = parseVec3OrThrow(argc, argv, i, "--cam-pos");
+	});
+	handlers.emplace("--cam-fov", [](ParseOutcome &o, int argc, char **argv, int &i) {
+		if (i + 1 >= argc)
+		{
+			throw std::runtime_error("Missing value for --cam-fov (expected: <degrees>)");
+		}
+		o.options.cameraFov = parseFloatOrThrow(argv[i + 1], "camera fov");
+		i += 1;
+	});
+
+	handlers.emplace("--light-pos-x", [](ParseOutcome &o, int argc, char **argv, int &i) {
+		o.options.lightPosX = parseRangeOrThrow(argc, argv, i, "--light-pos-x");
+	});
+	handlers.emplace("--light-pos-y", [](ParseOutcome &o, int argc, char **argv, int &i) {
+		o.options.lightPosY = parseRangeOrThrow(argc, argv, i, "--light-pos-y");
+	});
+	handlers.emplace("--light-pos-z", [](ParseOutcome &o, int argc, char **argv, int &i) {
+		o.options.lightPosZ = parseRangeOrThrow(argc, argv, i, "--light-pos-z");
+	});
+	handlers.emplace("--light-intensity", [](ParseOutcome &o, int argc, char **argv, int &i) {
+		o.options.lightIntensity = parseRangeOrThrow(argc, argv, i, "--light-intensity");
+	});
+	handlers.emplace("--num-lights", [](ParseOutcome &o, int argc, char **argv, int &i) {
+		if (i + 1 >= argc)
+		{
+			throw std::runtime_error("Missing value for --num-lights (expected: <n>)");
+		}
+		o.options.numLights = parseIntOrThrow(argv[i + 1], "number of lights");
+		i += 1;
+	});
+
+	handlers.emplace("--plane-color", [](ParseOutcome &o, int argc, char **argv, int &i) {
+		o.options.planeColor = parseRangeOrThrow(argc, argv, i, "--plane-color");
+	});
+
+	handlers.emplace("--sphere-pos-xz", [](ParseOutcome &o, int argc, char **argv, int &i) {
+		o.options.spherePosXZ = parseRangeOrThrow(argc, argv, i, "--sphere-pos-xz");
+	});
+	handlers.emplace("--sphere-y", [](ParseOutcome &o, int argc, char **argv, int &i) {
+		o.options.sphereY = parseRangeOrThrow(argc, argv, i, "--sphere-y");
+	});
+	handlers.emplace("--sphere-radius", [](ParseOutcome &o, int argc, char **argv, int &i) {
+		o.options.sphereRadius = parseRangeOrThrow(argc, argv, i, "--sphere-radius");
+	});
+	handlers.emplace("--sphere-color", [](ParseOutcome &o, int argc, char **argv, int &i) {
+		o.options.sphereColor = parseRangeOrThrow(argc, argv, i, "--sphere-color");
+	});
+	handlers.emplace("--sphere-spec", [](ParseOutcome &o, int argc, char **argv, int &i) {
+		o.options.sphereSpec = parseRangeOrThrow(argc, argv, i, "--sphere-spec");
+	});
+	handlers.emplace("--sphere-ambient-scale", [](ParseOutcome &o, int argc, char **argv, int &i) {
+		o.options.sphereAmbientScale = parseRangeOrThrow(argc, argv, i, "--sphere-ambient-scale");
+	});
+	handlers.emplace("--sphere-exponent", [](ParseOutcome &o, int argc, char **argv, int &i) {
+		o.options.sphereExponent = parseRangeOrThrow(argc, argv, i, "--sphere-exponent");
+	});
+	handlers.emplace("--num-spheres", [](ParseOutcome &o, int argc, char **argv, int &i) {
+		if (i + 1 >= argc)
+		{
+			throw std::runtime_error("Missing value for --num-spheres (expected: <n>)");
+		}
+		o.options.numSpheres = parseIntOrThrow(argv[i + 1], "number of spheres");
+		i += 1;
+	});
+
+	for (int i = 1; i < argc; i++)
+	{
+		const std::string arg(argv[i]);
+		if (arg == "--help" || arg == "-h")
+		{
+			outcome.showHelp = true;
+			continue;
+		}
+
+		auto it = handlers.find(arg);
+		if (it == handlers.end())
+		{
+			throw std::runtime_error("Unknown argument: " + arg);
+		}
+		it->second(outcome, argc, argv, i);
+	}
+
+	if (outcome.options.numLights <= 0)
+	{
+		throw std::runtime_error("Invalid --num-lights (must be > 0)");
+	}
+	if (outcome.options.numSpheres < 0)
+	{
+		throw std::runtime_error("Invalid --num-spheres (must be >= 0)");
+	}
+	if (outcome.options.outputFile.empty())
+	{
+		throw std::runtime_error("Invalid --out (filename must not be empty)");
+	}
+
+	validateRangeOrThrow(outcome.options.lightPosX, "light-pos-x");
+	validateRangeOrThrow(outcome.options.lightPosY, "light-pos-y");
+	validateRangeOrThrow(outcome.options.lightPosZ, "light-pos-z");
+	validateRangeOrThrow(outcome.options.lightIntensity, "light-intensity");
+	validateRangeOrThrow(outcome.options.planeColor, "plane-color");
+	validateRangeOrThrow(outcome.options.spherePosXZ, "sphere-pos-xz");
+	validateRangeOrThrow(outcome.options.sphereY, "sphere-y");
+	validateRangeOrThrow(outcome.options.sphereRadius, "sphere-radius");
+	validateRangeOrThrow(outcome.options.sphereColor, "sphere-color");
+	validateRangeOrThrow(outcome.options.sphereSpec, "sphere-spec");
+	validateRangeOrThrow(outcome.options.sphereAmbientScale, "sphere-ambient-scale");
+	validateRangeOrThrow(outcome.options.sphereExponent, "sphere-exponent");
+
+	return outcome;
+}
+
 int main(int argc, char **argv)
 {
 	int width = 1024, height = 1024;
-	Camera c(Vec3(-12.0f, 10.0f, 12.0f), 45.0f);
+	Options options;
+
+	try
+	{
+		ParseOutcome parsed = parseArgsOrThrow(argc, argv);
+		if (parsed.showHelp)
+		{
+			printUsage(argv[0]);
+			return 0;
+		}
+		options = parsed.options;
+	}
+	catch (const std::exception &e)
+	{
+		std::cerr << e.what() << "\n\n";
+		printUsage(argv[0]);
+		return 1;
+	}
+
+	Camera c(options.cameraPosition, options.cameraFov);
 	std::vector<Ray> rays = c.getRays(width, height, Vec3(0.0f, -1.0f, 0.0f));
 	Image image(width, height);
 
 	std::mt19937 rng(std::random_device{}());
-	std::uniform_real_distribution<float> light_pos_xz(-12.0f, 12.0f);
-	std::uniform_real_distribution<float> light_pos_y(10.0f, 14.0f);
-	std::uniform_real_distribution<float> light_intensity(0.1f, 0.8f);
+	std::uniform_real_distribution<float> light_pos_x(options.lightPosX.min, options.lightPosX.max);
+	std::uniform_real_distribution<float> light_pos_y(options.lightPosY.min, options.lightPosY.max);
+	std::uniform_real_distribution<float> light_pos_z(options.lightPosZ.min, options.lightPosZ.max);
+	std::uniform_real_distribution<float> light_intensity(options.lightIntensity.min, options.lightIntensity.max);
 
 	std::vector<Light> lights;
-	for (int i = 0; i < 3; i++)
+	for (int i = 0; i < options.numLights; i++)
 	{
 		lights.push_back(Light(
-			Vec3(light_pos_xz(rng), light_pos_y(rng), light_pos_xz(rng)),
+			Vec3(light_pos_x(rng), light_pos_y(rng), light_pos_z(rng)),
 			light_intensity(rng)));
 	}
 
-	std::uniform_real_distribution<float> plane_color_dist(0.1f, 1.0f);
+	std::uniform_real_distribution<float> plane_color_dist(options.planeColor.min, options.planeColor.max);
 	Vec3 plane_diffuse(plane_color_dist(rng), plane_color_dist(rng), plane_color_dist(rng));
 
 	std::vector<std::unique_ptr<Shape>> scene;
@@ -57,15 +339,15 @@ int main(int argc, char **argv)
 			0.1f * plane_diffuse,
 			0.0f)));
 
-	std::uniform_real_distribution<float> pos_dist(-10.0f, 10.0f);
-	std::uniform_real_distribution<float> y_dist(0.25f, 2.0f);
-	std::uniform_real_distribution<float> radius_dist(0.25f, 0.75f);
-	std::uniform_real_distribution<float> color_dist(0.1f, 1.0f);
-	std::uniform_real_distribution<float> spec_dist(0.1f, 0.5f);
-	std::uniform_real_distribution<float> ambient_scale_dist(0.03f, 0.12f);
-	std::uniform_real_distribution<float> exponent_dist(15.0f, 200.0f);
+	std::uniform_real_distribution<float> pos_dist(options.spherePosXZ.min, options.spherePosXZ.max);
+	std::uniform_real_distribution<float> y_dist(options.sphereY.min, options.sphereY.max);
+	std::uniform_real_distribution<float> radius_dist(options.sphereRadius.min, options.sphereRadius.max);
+	std::uniform_real_distribution<float> color_dist(options.sphereColor.min, options.sphereColor.max);
+	std::uniform_real_distribution<float> spec_dist(options.sphereSpec.min, options.sphereSpec.max);
+	std::uniform_real_distribution<float> ambient_scale_dist(options.sphereAmbientScale.min, options.sphereAmbientScale.max);
+	std::uniform_real_distribution<float> exponent_dist(options.sphereExponent.min, options.sphereExponent.max);
 
-	for (int i = 0; i < 75; i++)
+	for (int i = 0; i < options.numSpheres; i++)
 	{
 		float radius = radius_dist(rng);
 		Vec3 center(pos_dist(rng), y_dist(rng), pos_dist(rng));
@@ -104,60 +386,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	image.writeToFile("test.png");
-
-	// if(argc < 2) {
-	// 	std::cout << "Usage: A1 meshfile" << std::endl;
-	// 	return 0;
-	// }
-	// std::string meshName(argv[1]);
-
-	// // Load geometry
-	// std::vector<float> posBuf; // list of vertex positions
-	// std::vector<float> norBuf; // list of vertex normals
-	// std::vector<float> texBuf; // list of vertex texture coords
-	// tinyobj::attrib_t attrib;
-	// std::vector<tinyobj::shape_t> shapes;
-	// std::vector<tinyobj::material_t> materials;
-	// std::string errStr;
-	// bool rc = tinyobj::LoadObj(&attrib, &shapes, &materials, &errStr, meshName.c_str());
-	// if(!rc) {
-	// 	std::cerr << errStr << std::endl;
-	// } else {
-	// 	// Some OBJ files have different indices for vertex positions, normals,
-	// 	// and texture coordinates. For example, a cube corner vertex may have
-	// 	// three different normals. Here, we are going to duplicate all such
-	// 	// vertices.
-	// 	// Loop over shapes
-	// 	for(size_t s = 0; s < shapes.size(); s++) {
-	// 		// Loop over faces (polygons)
-	// 		size_t index_offset = 0;
-	// 		for(size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
-	// 			size_t fv = shapes[s].mesh.num_face_vertices[f];
-	// 			// Loop over vertices in the face.
-	// 			for(size_t v = 0; v < fv; v++) {
-	// 				// access to vertex
-	// 				tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
-	// 				posBuf.push_back(attrib.vertices[3*idx.vertex_index+0]);
-	// 				posBuf.push_back(attrib.vertices[3*idx.vertex_index+1]);
-	// 				posBuf.push_back(attrib.vertices[3*idx.vertex_index+2]);
-	// 				if(!attrib.normals.empty()) {
-	// 					norBuf.push_back(attrib.normals[3*idx.normal_index+0]);
-	// 					norBuf.push_back(attrib.normals[3*idx.normal_index+1]);
-	// 					norBuf.push_back(attrib.normals[3*idx.normal_index+2]);
-	// 				}
-	// 				if(!attrib.texcoords.empty()) {
-	// 					texBuf.push_back(attrib.texcoords[2*idx.texcoord_index+0]);
-	// 					texBuf.push_back(attrib.texcoords[2*idx.texcoord_index+1]);
-	// 				}
-	// 			}
-	// 			index_offset += fv;
-	// 			// per-face material (IGNORE)
-	// 			shapes[s].mesh.material_ids[f];
-	// 		}
-	// 	}
-	// }
-	// std::cout << "Number of vertices: " << posBuf.size()/3 << std::endl;
+	image.writeToFile(options.outputFile);
 
 	return 0;
 }
