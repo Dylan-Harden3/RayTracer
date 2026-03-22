@@ -9,6 +9,9 @@
 #include <chrono>
 #include <limits>
 #include <iomanip>
+#include <atomic>
+#include <thread>
+#include <vector>
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
@@ -42,6 +45,7 @@ struct Options
 	Vec3 cameraPosition = Vec3(-12.0f, 10.0f, 12.0f);
 	float cameraFov = 45.0f;
 	std::string outputFile = "test.png";
+	int numThreads = 0; // 0 = std::thread::hardware_concurrency()
 
 	FloatRange lightPosX = {-12.0f, 12.0f};
 	FloatRange lightPosY = {10.0f, 14.0f};
@@ -152,6 +156,7 @@ static void printUsage(const char *exe)
 		<< "  --sphere-exponent <min> <max>    Phong exponent range (default: 15 200)\n"
 		<< "\n"
 		<< "Other:\n"
+		<< "  --threads <n>                   Render thread count (default: auto; 0=auto)\n"
 		<< "  -h, --help                       Show this help text\n";
 }
 
@@ -168,81 +173,77 @@ static ParseOutcome parseArgsOrThrow(int argc, char **argv)
 	using Handler = std::function<void(ParseOutcome &, int, char **, int &)>;
 	std::unordered_map<std::string, Handler> handlers;
 
-	handlers.emplace("--out", [](ParseOutcome &o, int argc, char **argv, int &i) {
+	handlers.emplace("--out", [](ParseOutcome &o, int argc, char **argv, int &i)
+					 {
 		if (i + 1 >= argc)
 		{
 			throw std::runtime_error("Missing value for --out (expected: <filename>)");
 		}
 		o.options.outputFile = std::string(argv[i + 1]);
-		i += 1;
-	});
+		i += 1; });
 
-	handlers.emplace("--cam-pos", [](ParseOutcome &o, int argc, char **argv, int &i) {
-		o.options.cameraPosition = parseVec3OrThrow(argc, argv, i, "--cam-pos");
-	});
-	handlers.emplace("--cam-fov", [](ParseOutcome &o, int argc, char **argv, int &i) {
+	handlers.emplace("--threads", [](ParseOutcome &o, int argc, char **argv, int &i)
+					 {
+		if (i + 1 >= argc)
+		{
+			throw std::runtime_error("Missing value for --threads (expected: <n>)");
+		}
+		o.options.numThreads = parseIntOrThrow(argv[i + 1], "thread count");
+		i += 1; });
+
+	handlers.emplace("--cam-pos", [](ParseOutcome &o, int argc, char **argv, int &i)
+					 { o.options.cameraPosition = parseVec3OrThrow(argc, argv, i, "--cam-pos"); });
+	handlers.emplace("--cam-fov", [](ParseOutcome &o, int argc, char **argv, int &i)
+					 {
 		if (i + 1 >= argc)
 		{
 			throw std::runtime_error("Missing value for --cam-fov (expected: <degrees>)");
 		}
 		o.options.cameraFov = parseFloatOrThrow(argv[i + 1], "camera fov");
-		i += 1;
-	});
+		i += 1; });
 
-	handlers.emplace("--light-pos-x", [](ParseOutcome &o, int argc, char **argv, int &i) {
-		o.options.lightPosX = parseRangeOrThrow(argc, argv, i, "--light-pos-x");
-	});
-	handlers.emplace("--light-pos-y", [](ParseOutcome &o, int argc, char **argv, int &i) {
-		o.options.lightPosY = parseRangeOrThrow(argc, argv, i, "--light-pos-y");
-	});
-	handlers.emplace("--light-pos-z", [](ParseOutcome &o, int argc, char **argv, int &i) {
-		o.options.lightPosZ = parseRangeOrThrow(argc, argv, i, "--light-pos-z");
-	});
-	handlers.emplace("--light-intensity", [](ParseOutcome &o, int argc, char **argv, int &i) {
-		o.options.lightIntensity = parseRangeOrThrow(argc, argv, i, "--light-intensity");
-	});
-	handlers.emplace("--num-lights", [](ParseOutcome &o, int argc, char **argv, int &i) {
+	handlers.emplace("--light-pos-x", [](ParseOutcome &o, int argc, char **argv, int &i)
+					 { o.options.lightPosX = parseRangeOrThrow(argc, argv, i, "--light-pos-x"); });
+	handlers.emplace("--light-pos-y", [](ParseOutcome &o, int argc, char **argv, int &i)
+					 { o.options.lightPosY = parseRangeOrThrow(argc, argv, i, "--light-pos-y"); });
+	handlers.emplace("--light-pos-z", [](ParseOutcome &o, int argc, char **argv, int &i)
+					 { o.options.lightPosZ = parseRangeOrThrow(argc, argv, i, "--light-pos-z"); });
+	handlers.emplace("--light-intensity", [](ParseOutcome &o, int argc, char **argv, int &i)
+					 { o.options.lightIntensity = parseRangeOrThrow(argc, argv, i, "--light-intensity"); });
+	handlers.emplace("--num-lights", [](ParseOutcome &o, int argc, char **argv, int &i)
+					 {
 		if (i + 1 >= argc)
 		{
 			throw std::runtime_error("Missing value for --num-lights (expected: <n>)");
 		}
 		o.options.numLights = parseIntOrThrow(argv[i + 1], "number of lights");
-		i += 1;
-	});
+		i += 1; });
 
-	handlers.emplace("--plane-color", [](ParseOutcome &o, int argc, char **argv, int &i) {
-		o.options.planeColor = parseRangeOrThrow(argc, argv, i, "--plane-color");
-	});
+	handlers.emplace("--plane-color", [](ParseOutcome &o, int argc, char **argv, int &i)
+					 { o.options.planeColor = parseRangeOrThrow(argc, argv, i, "--plane-color"); });
 
-	handlers.emplace("--sphere-pos-xz", [](ParseOutcome &o, int argc, char **argv, int &i) {
-		o.options.spherePosXZ = parseRangeOrThrow(argc, argv, i, "--sphere-pos-xz");
-	});
-	handlers.emplace("--sphere-y", [](ParseOutcome &o, int argc, char **argv, int &i) {
-		o.options.sphereY = parseRangeOrThrow(argc, argv, i, "--sphere-y");
-	});
-	handlers.emplace("--sphere-radius", [](ParseOutcome &o, int argc, char **argv, int &i) {
-		o.options.sphereRadius = parseRangeOrThrow(argc, argv, i, "--sphere-radius");
-	});
-	handlers.emplace("--sphere-color", [](ParseOutcome &o, int argc, char **argv, int &i) {
-		o.options.sphereColor = parseRangeOrThrow(argc, argv, i, "--sphere-color");
-	});
-	handlers.emplace("--sphere-spec", [](ParseOutcome &o, int argc, char **argv, int &i) {
-		o.options.sphereSpec = parseRangeOrThrow(argc, argv, i, "--sphere-spec");
-	});
-	handlers.emplace("--sphere-ambient-scale", [](ParseOutcome &o, int argc, char **argv, int &i) {
-		o.options.sphereAmbientScale = parseRangeOrThrow(argc, argv, i, "--sphere-ambient-scale");
-	});
-	handlers.emplace("--sphere-exponent", [](ParseOutcome &o, int argc, char **argv, int &i) {
-		o.options.sphereExponent = parseRangeOrThrow(argc, argv, i, "--sphere-exponent");
-	});
-	handlers.emplace("--num-spheres", [](ParseOutcome &o, int argc, char **argv, int &i) {
+	handlers.emplace("--sphere-pos-xz", [](ParseOutcome &o, int argc, char **argv, int &i)
+					 { o.options.spherePosXZ = parseRangeOrThrow(argc, argv, i, "--sphere-pos-xz"); });
+	handlers.emplace("--sphere-y", [](ParseOutcome &o, int argc, char **argv, int &i)
+					 { o.options.sphereY = parseRangeOrThrow(argc, argv, i, "--sphere-y"); });
+	handlers.emplace("--sphere-radius", [](ParseOutcome &o, int argc, char **argv, int &i)
+					 { o.options.sphereRadius = parseRangeOrThrow(argc, argv, i, "--sphere-radius"); });
+	handlers.emplace("--sphere-color", [](ParseOutcome &o, int argc, char **argv, int &i)
+					 { o.options.sphereColor = parseRangeOrThrow(argc, argv, i, "--sphere-color"); });
+	handlers.emplace("--sphere-spec", [](ParseOutcome &o, int argc, char **argv, int &i)
+					 { o.options.sphereSpec = parseRangeOrThrow(argc, argv, i, "--sphere-spec"); });
+	handlers.emplace("--sphere-ambient-scale", [](ParseOutcome &o, int argc, char **argv, int &i)
+					 { o.options.sphereAmbientScale = parseRangeOrThrow(argc, argv, i, "--sphere-ambient-scale"); });
+	handlers.emplace("--sphere-exponent", [](ParseOutcome &o, int argc, char **argv, int &i)
+					 { o.options.sphereExponent = parseRangeOrThrow(argc, argv, i, "--sphere-exponent"); });
+	handlers.emplace("--num-spheres", [](ParseOutcome &o, int argc, char **argv, int &i)
+					 {
 		if (i + 1 >= argc)
 		{
 			throw std::runtime_error("Missing value for --num-spheres (expected: <n>)");
 		}
 		o.options.numSpheres = parseIntOrThrow(argv[i + 1], "number of spheres");
-		i += 1;
-	});
+		i += 1; });
 
 	for (int i = 1; i < argc; i++)
 	{
@@ -273,6 +274,10 @@ static ParseOutcome parseArgsOrThrow(int argc, char **argv)
 	{
 		throw std::runtime_error("Invalid --out (filename must not be empty)");
 	}
+	if (outcome.options.numThreads < 0)
+	{
+		throw std::runtime_error("Invalid --threads (must be >= 0)");
+	}
 
 	validateRangeOrThrow(outcome.options.lightPosX, "light-pos-x");
 	validateRangeOrThrow(outcome.options.lightPosY, "light-pos-y");
@@ -288,6 +293,136 @@ static ParseOutcome parseArgsOrThrow(int argc, char **argv)
 	validateRangeOrThrow(outcome.options.sphereExponent, "sphere-exponent");
 
 	return outcome;
+}
+
+namespace
+{
+	using Clock = std::chrono::steady_clock;
+	using MicrosecondsD = std::chrono::duration<double, std::micro>;
+
+	struct PixelTimingStats
+	{
+		double min_us = std::numeric_limits<double>::infinity();
+		double max_us = 0.0;
+		double sum_us = 0.0;
+		std::size_t count = 0;
+
+		void record(double pixel_us)
+		{
+			min_us = std::min(min_us, pixel_us);
+			max_us = std::max(max_us, pixel_us);
+			sum_us += pixel_us;
+			count += 1;
+		}
+
+		void merge(const PixelTimingStats &other)
+		{
+			if (other.count == 0)
+			{
+				return;
+			}
+			min_us = std::min(min_us, other.min_us);
+			max_us = std::max(max_us, other.max_us);
+			sum_us += other.sum_us;
+			count += other.count;
+		}
+	};
+
+	struct RenderResult
+	{
+		PixelTimingStats pixels;
+		double render_ms = 0.0;
+		unsigned int thread_count = 1;
+	};
+
+	static RenderResult renderMultithreaded(
+		Image &image,
+		const std::vector<Ray> &rays,
+		const std::vector<std::unique_ptr<Shape>> &scene,
+		const std::vector<Light> &lights,
+		std::size_t width,
+		std::size_t height,
+		unsigned int thread_count = 0)
+	{
+		const std::size_t total_pixels = width * height;
+
+		RenderResult result;
+		result.thread_count = (thread_count == 0) ? std::thread::hardware_concurrency() : thread_count;
+		if (result.thread_count == 0)
+		{
+			result.thread_count = 1;
+		}
+
+		if (rays.size() != total_pixels)
+		{
+			throw std::runtime_error("Camera returned unexpected ray count (expected width*height)");
+		}
+
+		std::atomic<std::size_t> next_pixel{0};
+		std::vector<PixelTimingStats> thread_stats(result.thread_count);
+		std::vector<std::thread> threads;
+		threads.reserve(result.thread_count);
+
+		const auto render_start = Clock::now();
+
+		for (unsigned int t = 0; t < result.thread_count; ++t)
+		{
+			threads.emplace_back([&, t]()
+								 {
+				PixelTimingStats local_stats;
+
+				while (true)
+				{
+					const std::size_t pixel = next_pixel.fetch_add(1, std::memory_order_relaxed);
+					if (pixel >= total_pixels)
+					{
+						break;
+					}
+
+					const std::size_t x = pixel / height;
+					const std::size_t y = pixel % height;
+
+					const auto pixel_start = Clock::now();
+
+					const Ray &ray = rays[pixel];
+					std::optional<Hit> closest_hit;
+					for (const auto &shape : scene)
+					{
+						auto hit = shape->intersects(ray);
+						if (hit && (!closest_hit || hit->distance < closest_hit->distance))
+						{
+							closest_hit = *hit;
+						}
+					}
+
+					if (closest_hit)
+					{
+						Vec3 color = closest_hit->shape->getColor(ray, *closest_hit, lights, scene);
+						image.setPixel(static_cast<int>(x), static_cast<int>(y), color.x, color.y, color.z);
+					}
+
+					const double pixel_us = MicrosecondsD(Clock::now() - pixel_start).count();
+					local_stats.record(pixel_us);
+				}
+
+				thread_stats[t] = local_stats; });
+		}
+
+		for (auto &th : threads)
+		{
+			th.join();
+		}
+
+		const auto render_end = Clock::now();
+		result.render_ms = std::chrono::duration<double, std::milli>(render_end - render_start).count();
+
+		for (const auto &stats : thread_stats)
+		{
+			result.pixels.merge(stats);
+		}
+
+		return result;
+	}
 }
 
 int main(int argc, char **argv)
@@ -366,62 +501,29 @@ int main(int argc, char **argv)
 		scene.push_back(std::make_unique<Sphere>(center, radius, Material(diffuse, specular, ambient, exponent)));
 	}
 
-	using Clock = std::chrono::steady_clock;
-	using MicrosecondsD = std::chrono::duration<double, std::micro>;
-
-	double min_pixel_us = std::numeric_limits<double>::infinity();
-	double max_pixel_us = 0.0;
-	double sum_pixel_us = 0.0;
-	std::size_t pixel_count = 0;
-
-	const auto render_start = Clock::now();
-	std::size_t r = 0;
-	for (std::size_t i = 0; i < static_cast<std::size_t>(width); i++)
-	{
-		for (std::size_t j = 0; j < static_cast<std::size_t>(height); j++)
-		{
-			const auto pixel_start = Clock::now();
-			Ray ray = rays[r];
-			std::optional<Hit> closest_hit;
-			for (const auto &shape : scene)
-			{
-				auto hit = shape->intersects(ray);
-				if (hit && (!closest_hit || hit->distance < closest_hit->distance))
-				{
-					closest_hit = *hit;
-				}
-			}
-			if (closest_hit)
-			{
-				Vec3 color = closest_hit->shape->getColor(ray, *closest_hit, lights, scene);
-				image.setPixel(i, j, color.x, color.y, color.z);
-			}
-
-			const double pixel_us = MicrosecondsD(Clock::now() - pixel_start).count();
-			min_pixel_us = std::min(min_pixel_us, pixel_us);
-			max_pixel_us = std::max(max_pixel_us, pixel_us);
-			sum_pixel_us += pixel_us;
-			pixel_count += 1;
-
-			r += 1;
-		}
-	}
-	const auto render_end = Clock::now();
-	const double render_ms = std::chrono::duration<double, std::milli>(render_end - render_start).count();
+	const unsigned int render_threads = (options.numThreads > 0) ? static_cast<unsigned int>(options.numThreads) : 0;
+	const RenderResult render = renderMultithreaded(
+		image,
+		rays,
+		scene,
+		lights,
+		static_cast<std::size_t>(width),
+		static_cast<std::size_t>(height),
+		render_threads);
 
 	image.writeToFile(options.outputFile);
 
-	if (pixel_count > 0)
+	if (render.pixels.count > 0)
 	{
-		const double avg_pixel_us = sum_pixel_us / static_cast<double>(pixel_count);
+		const double avg_pixel_us = render.pixels.sum_us / static_cast<double>(render.pixels.count);
 		std::cerr << std::fixed << std::setprecision(3);
-		std::cerr << "Pixel timing (us): min=" << min_pixel_us
-				  << " max=" << max_pixel_us
+		std::cerr << "Pixel timing (us): min=" << render.pixels.min_us
+				  << " max=" << render.pixels.max_us
 				  << " avg=" << avg_pixel_us
-				  << " (n=" << pixel_count << ")\n";
+				  << " (n=" << render.pixels.count << ")\n";
 	}
 	std::cerr << std::fixed << std::setprecision(3);
-	std::cerr << "Total render time (ms): " << render_ms << "\n";
+	std::cerr << "Total render time (ms): " << render.render_ms << " (threads=" << render.thread_count << ")\n";
 
 	return 0;
 }
